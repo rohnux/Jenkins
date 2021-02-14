@@ -1,2 +1,2 @@
 # Jenkins
-Jenkins Jobs  
+This repository contains the different Jenkins jobs. 
