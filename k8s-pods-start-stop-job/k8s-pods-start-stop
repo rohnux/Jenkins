@@ -1,1 +1,110 @@
+pipeline {
+agent {
+      label {
+          label "jenkins-slave"
+          customWorkspace "/var/lib/jenkins/workspace/${env.JOB_NAME}"
+      }
+}
 
+parameters {
+      string (
+        name: 'ENVIRONMENT',
+        defaultValue: 'test',
+        description: "Environment")
+      choice(
+        name: 'shutdown',
+        choices:"Stop\nStart",
+        description: "Select Stop for shutdown, Start for startup K8s Pods")
+      extendedChoice(              
+        name: 'Deployment',
+        defaultValue: '',
+        description: 'Name of Deployment',
+        multiSelectDelimiter: ' ',
+        quoteValue: false,
+        saveJSONParameterToFile: false,
+        type: 'PT_CHECKBOX',  # provided  checkbox to multi-select the values
+        value: 'nginx,apache',
+        visibleItemCount: 10)
+
+          }
+
+	stages {
+       stage("Set Build Name"){
+          steps {
+              script {
+          currentBuild.displayName = "${ENVIRONMENT}-${BUILD_NUMBER}"
+          currentBuild.description = "${ENVIRONMENT}-${BUILD_NUMBER}"
+              }
+          }
+    }
+
+    stage('Set Build User') {
+      agent { label 'master' }
+      steps {
+          script {
+             try {
+               wrap([$class: 'BuildUser']) {
+                  BUILD_USER = "${BUILD_USER}"
+                  BUILD_USER_ID = "${BUILD_USER_ID}"
+                  echo "BUILD_USER_FIRST_NAME=${BUILD_USER_FIRST_NAME}"
+                  echo "BUILD_USER_LAST_NAME=${BUILD_USER_LAST_NAME}"
+                  echo "BUILD_USER_ID=${BUILD_USER_ID}"
+               }
+             }
+             catch(all) {
+                  BUILD_USER="Automation"
+                  BUILD_USER_ID="rohan@gmail.com"
+             }
+         }
+      }
+    }
+
+    stage(" K8s Pods shutdown"){
+        when {
+         expression { params.shutdown == 'Stop' }
+             }
+             steps {
+              sh '''
+              K8sENV=demo
+              export KUBECONFIG=/opt/kubernetes/KUBECONFIG
+              for i in $Deployment
+              do
+                 AWS_PROFILE=aws-poc
+                 kubectl get pods -n ${K8sENV}
+                 kubectl scale deployment $i --replicas=0 -n ${K8sENV}
+                 kubectl get pods -n ${K8sENV}
+              done
+                            '''
+                  }
+       }
+     stage(" K8s Pods scale up"){
+         when {
+          expression { params.shutdown == 'Start' }
+                }
+                steps {
+                 sh '''
+                 K8sENV=demo
+                 export KUBECONFIG=/opt/kubernetes/KUBECONFIG
+                 for i in $Deployment
+                 do
+                    AWS_PROFILE=aws-poc
+                    kubectl get pods -n ${K8sENV}
+                    kubectl scale deployment $i --replicas=5 -n ${K8sENV}
+                    kubectl get pods -n ${K8sENV}
+                 done
+                            '''
+                     }
+          }
+
+
+}
+  post {
+        success {
+            mail to:"${BUILD_USER_ID}", subject:"SUCCESS: ${currentBuild.fullDisplayName}", body: "Job User: ${BUILD_USER} \nJob Status: ${currentBuild.currentResult} \nJob Name: ${env.JOB_NAME}  \nBuild number: ${env.BUILD_NUMBER} \nJob Url: ${env.BUILD_URL}"
+        }
+        failure {
+            mail to:"${BUILD_USER_ID}", subject:"FAILURE: ${currentBuild.fullDisplayName}", body: "Job User: ${BUILD_USER} \nJob Status: ${currentBuild.currentResult}: \nJob Name: ${env.JOB_NAME} \nBuild number: ${env.BUILD_NUMBER} \nJob Url: ${env.BUILD_URL}"
+        }
+    }
+
+}
