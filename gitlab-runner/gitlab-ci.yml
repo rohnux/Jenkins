@@ -1,0 +1,30 @@
+stages:
+    - build-with-scan
+    - check
+
+build-with-scan:
+    only:
+      refs:
+        - merge_requests
+      variables:
+        - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+        - $CI_MERGE_REQUEST_EVENT_TYPE == "merged_result"
+
+    stage: build-with-scan
+    script:
+        - mvn -Dmaven.repo.local=/cache -f pom.xml clean install
+        - /tmp/sonar-scanner-2.8/bin/sonar-scanner -Dsonar.login=$SONAR_TOKEN -Dsonar.projectKey=HGW-shared-rule-manager-dev-eks-pipeline -Dsonar.projectName=HGW-shared-rule-manager-dev-eks-pipeline -Dsonar.profile=homegateway -Dsonar.qualitygate=HGW-Dev-RM -Dsonar.projectVersion=1.0 -Dsonar.sources=. -Dsonar.java.libraries=/tmp/lombok-1.18.4.jar -Dsonar.exclusions=**/jacoco-resources/**,**/config/**,**/domain/**,**/contracts/** -Dsonar.tests=. -Dsonar.junit.reportsPath=**/target/surefire-reports -Dsonar.surefire.reportsPath=**/target/surefire-reports, -Dsonar.jacoco.reportPaths=**/target/jacoco-output/merged.exec -Dsonar.java.binaries=**/target/classes -Dsonar.java.coveragePlugin=jacoco -Dsonar.test.exclusions=**/src/main/java/** -Dsonar.test.inclusions=**/src/test/java/**
+    artifacts:
+        paths:
+            - tmp/build
+
+check:
+    only:
+      refs:
+        - merge_requests
+      variables:
+        - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME != "dev"
+        - $CI_MERGE_REQUEST_EVENT_TYPE == "merged_result"
+    stage: check
+    script:
+        - echo "this stage must run for all"
